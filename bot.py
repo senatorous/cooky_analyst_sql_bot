@@ -80,6 +80,12 @@ TASK_SYSTEM_PROMPT = """Ты генератор SQL-задач для трена
 Правила:
 - Язык задания: русский.
 - Данные компактные, но достаточные для проверки.
+- Каждая генерация должна быть заметно отличной от типовых учебных примеров.
+- Избегай шаблонов вроде employees/departments, «сотрудники и отделы», «заказы и клиенты», если можно придумать альтернативу.
+- По возможности используй разные сеттинги: логистика, финансы, подписки/биллинг, медицина, спорт, образование, соцсети, производство, телеметрия, маркетинг, саппорт, каталог товаров, путешествия.
+- Иногда добавляй реалистичные нюансы данных (в пределах компактности): NULL, дубликаты, несколько строк на сущность, «пустые» категории, значения на границе (0, отрицательные, одинаковые суммы), разные даты.
+- Для topic=group_agg или topic=filter генерируй одну таблицу длиной от 5 до 12 строк.
+- Для topic=join каждая таблица должна содержать не менее 2 и не более 6 строк.
 - DDL должен быть исполнимым в DuckDB.
 - reference.sql должен корректно решать задачу.
 - expected_output.columns должно соответствовать reference.sql по количеству и смыслу.
@@ -144,12 +150,16 @@ def extract_json(raw_text: str) -> dict[str, Any]:
     return json.loads(text.strip())
 
 
-def call_openai_json(system_prompt: str, user_payload: dict[str, Any]) -> dict[str, Any]:
+def call_openai_json(
+    system_prompt: str,
+    user_payload: dict[str, Any],
+    temperature: float = 0.2,
+) -> dict[str, Any]:
     client = get_openai_client()
     model = get_openai_model()
     completion = client.chat.completions.create(
         model=model,
-        temperature=0.2,
+        temperature=temperature,
         response_format={"type": "json_object"},
         messages=[
             {"role": "system", "content": system_prompt},
@@ -418,7 +428,7 @@ def generate_feedback(task_state: TaskState, user_sql: str, verdict: dict[str, A
 
 
 def generate_task(topic: str) -> TaskState:
-    task_json = call_openai_json(TASK_SYSTEM_PROMPT, {"topic": topic})
+    task_json = call_openai_json(TASK_SYSTEM_PROMPT, {"topic": topic}, temperature=0.8)
     validate_task_json(task_json)
     if task_json["topic"] != topic:
         raise ValueError("Тема задачи не совпала с выбранной кнопкой")
